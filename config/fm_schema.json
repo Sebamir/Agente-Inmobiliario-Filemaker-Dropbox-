@@ -1,0 +1,61 @@
+{
+  "_comment": "Editar este archivo con los campos reales de tu Layout de FileMaker.",
+  "_comment2": "card_field=true → se muestra en la tarjeta de resultado. false → solo se usa para filtrar.",
+  "description_field": "descripcion",
+  "fields": [
+    {
+      "fm_field": "tipo_inmueble",
+      "display_name": "Tipo",
+      "description": "Tipo de inmueble: Casa, Piso, Apartamento, Local, Oficina, Nave industrial",
+      "card_field": true
+    },
+    {
+      "fm_field": "ciudad",
+      "display_name": "Ciudad",
+      "description": "Ciudad o municipio donde está ubicado el inmueble",
+      "card_field": true
+    },
+    {
+      "fm_field": "barrio",
+      "display_name": "Barrio / Zona",
+      "description": "Barrio, zona o distrito del inmueble",
+      "card_field": true
+    },
+    {
+      "fm_field": "precio",
+      "display_name": "Precio",
+      "description": "Precio del inmueble en euros",
+      "card_field": true
+    },
+    {
+      "fm_field": "habitaciones",
+      "display_name": "Habitaciones",
+      "description": "Número de habitaciones o dormitorios",
+      "card_field": true
+    },
+    {
+      "fm_field": "superficie_m2",
+      "display_name": "Superficie",
+      "description": "Superficie total en metros cuadrados",
+      "card_field": true
+    },
+    {
+      "fm_field": "materiales",
+      "display_name": "Materiales",
+      "description": "Materiales de construcción principales: madera, ladrillo, hormigón, acero",
+      "card_field": false
+    },
+    {
+      "fm_field": "caracteristicas",
+      "display_name": "Características",
+      "description": "Características especiales: balcón, terraza, jardín, piscina, garaje, trastero, ascensor",
+      "card_field": false
+    },
+    {
+      "fm_field": "descripcion",
+      "display_name": "Descripción",
+      "description": "Descripción libre del inmueble, notas adicionales",
+      "card_field": false
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+
+  # ── Backend FastAPI ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agente_inmobiliario_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${API_PORT:-8000}:8000"
+    command: >
+      uvicorn app.api.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── Interfaz Streamlit ───────────────────────────────────────────────────────
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agente_inmobiliario_ui
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Streamlit habla con el servicio api por nombre de red interno de Docker
+      API_BASE_URL: http://api:8000
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    command: >
+      streamlit run app/ui/streamlit_app.py
+      --server.port=8501
+      --server.address=0.0.0.0
+      --server.headless=true
+    depends_on:
+      api:
+        condition: service_healthy
+
+networks:
+  default:
+    name: agente_inmobiliario_net

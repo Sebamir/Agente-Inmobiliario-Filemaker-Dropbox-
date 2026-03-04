@@ -1,0 +1,29 @@
+# ============================================================
+# AGENTE INMOBILIARIO - Dependencias
+# ============================================================
+
+# --- API Backend ---
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+httpx==0.27.0                   # Cliente HTTP asíncrono (para llamadas internas)
+
+# --- Configuración ---
+pydantic==2.7.1
+pydantic-settings==2.3.0        # Lectura de .env con Pydantic v2
+
+# --- FileMaker Data API ---
+python-fmrest==1.7.0
+
+# --- Dropbox ---
+dropbox==12.0.2
+
+# --- Interfaz Streamlit ---
+streamlit==1.35.0
+requests==2.32.2                # Usado por Streamlit para llamar al backend
+
+# --- Agente de Lenguaje Natural ---
+openai==1.35.0                  # GPT-4o-mini para extracción de filtros desde NL
+
+# --- Utilidades ---
+python-dotenv==1.0.1            # Carga de .env en desarrollo local
+tenacity==8.3.0                 # Reintentos con backoff para llamadas a APIs externas
