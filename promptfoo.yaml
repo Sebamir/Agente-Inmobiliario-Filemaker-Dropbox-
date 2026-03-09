@@ -1,0 +1,169 @@
+# Configuración de promptfoo para el agente de extracción de filtros FM
+# Docs: https://promptfoo.dev/docs/configuration/guide
+#
+# Uso:
+#   npx promptfoo eval                  # correr todos los tests
+#   npx promptfoo eval --verbose        # con detalle de cada assertion
+#   npx promptfoo view                  # abrir UI en browser
+#
+# Requiere: OPENAI_API_KEY en .env o como variable de entorno
+
+description: "Agente Inmobiliario — extracción de filtros FileMaker desde lenguaje natural"
+
+prompts:
+  - file://tests/prompts/extract_filters.txt
+
+providers:
+  - id: openai:gpt-4o-mini
+    config:
+      temperature: 0
+      response_format:
+        type: json_object
+
+defaultTest:
+  assert:
+    # El output siempre debe ser JSON válido
+    - type: is-json
+
+tests:
+
+  # ── Casos básicos de tipo + ciudad ─────────────────────────────────────────
+
+  - description: "Casa en Barcelona"
+    vars:
+      query: "quiero una casa en Barcelona"
+    assert:
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.ciudad === "Barcelona" || f.ciudad?.includes("Barcelona");
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.tipo_inmueble?.toLowerCase().includes("casa");
+
+  - description: "Piso en Madrid con habitaciones"
+    vars:
+      query: "piso en Madrid de 3 habitaciones"
+    assert:
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.ciudad === "Madrid" || f.ciudad?.includes("Madrid");
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.habitaciones === "3" || f.habitaciones?.includes("3");
+
+  # ── Rangos de precio ────────────────────────────────────────────────────────
+
+  - description: "Precio máximo con 'menos de'"
+    vars:
+      query: "piso de menos de 200000 euros"
+    assert:
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          // FM syntax: ..200000 (menor o igual) o <200000
+          return f.precio?.includes("200000");
+
+  - description: "Rango de precio entre dos valores"
+    vars:
+      query: "casa entre 150000 y 300000 euros"
+    assert:
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.precio?.includes("150000") && f.precio?.includes("300000");
+
+  # ── Características y materiales ────────────────────────────────────────────
+
+  - description: "Casa con jardín y garaje"
+    vars:
+      query: "casa con jardín y garaje"
+    assert:
+      - type: javascript
+        value: |
+          const out = JSON.parse(output);
+          const f = out.filters;
+          // jardín y garaje deben caer en caracteristicas o description_terms
+          const allText = JSON.stringify(f).toLowerCase() + JSON.stringify(out.description_terms).toLowerCase();
+          return allText.includes("jard") && allText.includes("garaje");
+
+  - description: "Materiales de madera"
+    vars:
+      query: "casa de madera con balcón"
+    assert:
+      - type: javascript
+        value: |
+          const out = JSON.parse(output);
+          const allText = JSON.stringify(out).toLowerCase();
+          return allText.includes("madera");
+      - type: javascript
+        value: |
+          const allText = JSON.stringify(JSON.parse(output)).toLowerCase();
+          return allText.includes("balc");
+
+  # ── Superficie ──────────────────────────────────────────────────────────────
+
+  - description: "Superficie mínima"
+    vars:
+      query: "piso de más de 80 metros cuadrados"
+    assert:
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.superficie_m2?.includes("80");
+
+  # ── Consulta combinada compleja ─────────────────────────────────────────────
+
+  - description: "Consulta compleja con múltiples campos"
+    vars:
+      query: "casa en Barcelona, barrio Sarrià, 4 habitaciones, máximo 500000 euros, con piscina y terraza"
+    assert:
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.ciudad === "Barcelona" || f.ciudad?.includes("Barcelona");
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.habitaciones === "4" || f.habitaciones?.includes("4");
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.precio?.includes("500000");
+      - type: javascript
+        value: |
+          const allText = JSON.stringify(JSON.parse(output)).toLowerCase();
+          return allText.includes("sarri") || allText.includes("sarr");
+
+  # ── Casos edge ──────────────────────────────────────────────────────────────
+
+  - description: "Consulta muy vaga sin campos mapeables"
+    vars:
+      query: "algo bonito y luminoso cerca del mar"
+    assert:
+      - type: javascript
+        value: |
+          const out = JSON.parse(output);
+          // No debe crashear. Si no mapea nada, description_terms debe tener contenido
+          return Array.isArray(out.description_terms) && out.description_terms.length > 0 || Object.keys(out.filters).length > 0;
+      - type: javascript
+        value: |
+          // interpretation siempre debe existir y ser string no vacío
+          const out = JSON.parse(output);
+          return typeof out.interpretation === "string" && out.interpretation.length > 0;
+
+  - description: "interpretation siempre presente"
+    vars:
+      query: "oficina en Valencia"
+    assert:
+      - type: javascript
+        value: |
+          const out = JSON.parse(output);
+          return typeof out.interpretation === "string" && out.interpretation.length > 5;
+      - type: javascript
+        value: |
+          const f = JSON.parse(output).filters;
+          return f.ciudad?.includes("Valencia") || f.ciudad === "Valencia";

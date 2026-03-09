@@ -17,8 +17,9 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Ruta al schema de campos FM
+# Rutas a los archivos de configuración del agente
 _SCHEMA_PATH = Path(__file__).parent.parent.parent / "config" / "fm_schema.json"
+_PROMPT_PATH = Path(__file__).parent.parent.parent / "config" / "agent_prompt.txt"
 
 
 @dataclass
@@ -38,38 +39,14 @@ def _load_schema() -> dict:
 
 
 def _build_system_prompt(schema: dict) -> str:
-    """Construye el prompt de sistema con el schema FM."""
+    """Construye el prompt de sistema inyectando los campos FM en el template de agent_prompt.txt."""
     fields_text = "\n".join(
         f'- fm_field: "{f["fm_field"]}" | {f["description"]}'
         for f in schema["fields"]
         if f["fm_field"] != schema.get("description_field")
     )
-    description_field = schema.get("description_field", "descripcion")
-
-    return f"""Eres un asistente especializado en búsqueda inmobiliaria.
-Tu tarea es analizar la consulta del usuario y extraer filtros de búsqueda
-mapeados a los campos de la base de datos FileMaker.
-
-Campos disponibles en FileMaker:
-{fields_text}
-
-Reglas de extracción:
-1. Mapea cada concepto del usuario al campo FM más apropiado.
-2. Para texto, usa comodines FileMaker: *valor* para búsqueda parcial, ==valor para exacta.
-3. Para rangos numéricos (precio, superficie), usa la sintaxis FM: >100 <500 o ..500 (menor o igual).
-4. Los términos que NO puedan mapearse a ningún campo van al array "description_terms" como lista de palabras clave.
-5. "interpretation" debe ser una frase corta en español explicando qué entendiste.
-
-Responde ÚNICAMENTE con un JSON válido con esta estructura exacta:
-{{
-  "filters": {{
-    "nombre_campo_fm": "valor_con_sintaxis_fm"
-  }},
-  "description_terms": ["término1", "término2"],
-  "interpretation": "Buscando [tipo] en [ciudad] con [características]..."
-}}
-
-Si no hay filtros aplicables, devuelve filters vacío y pon los términos en description_terms."""
+    template = _PROMPT_PATH.read_text(encoding="utf-8")
+    return template.format(fields_text=fields_text)
 
 
 class AgentService:
