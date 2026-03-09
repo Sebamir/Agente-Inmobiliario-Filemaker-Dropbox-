@@ -16,28 +16,46 @@ router = APIRouter(prefix="/agent", tags=["Búsqueda Inteligente"])
 _orchestrator = RealEstateOrchestrator()
 
 
+class ConversationMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str
+
+
 class NLSearchRequest(BaseModel):
     query: str = Field(
         ...,
-        min_length=5,
+        min_length=2,
         max_length=500,
-        description="Consulta en lenguaje natural",
-        examples=["Necesito una casa en Barcelona de madera con balcón luminoso"],
+        description="Nuevo mensaje del usuario",
+        examples=["Necesito una casa en Barcelona con balcón"],
+    )
+    messages: list[ConversationMessage] = Field(
+        default_factory=list,
+        description="Historial de turnos anteriores de la conversación",
+    )
+    current_filters: dict[str, str] = Field(
+        default_factory=dict,
+        description="Filtros FM activos en este momento",
     )
 
 
 @router.post(
     "/search",
     response_model=SearchResponseSchema,
-    summary="Búsqueda de inmuebles por lenguaje natural",
+    summary="Búsqueda conversacional de inmuebles",
 )
 async def natural_language_search(body: NLSearchRequest) -> SearchResponseSchema:
     """
-    Interpreta una consulta libre y busca inmuebles en FileMaker.
+    Interpreta el nuevo mensaje del usuario en el contexto de la conversación
+    y busca inmuebles en FileMaker con los filtros actualizados.
 
-    - GPT-4o-mini extrae filtros estructurados de la consulta.
-    - Términos sin campo FM directo se buscan en el campo descripción.
-    - Devuelve lista de resultados con foto más reciente y link a carpeta Dropbox.
+    - El agente acumula, reemplaza o elimina filtros según el contexto.
+    - Devuelve resultados con foto más reciente y link a carpeta Dropbox.
     """
-    result = await _orchestrator.natural_language_search(body.query)
+    history = [{"role": m.role, "content": m.content} for m in body.messages]
+    result = await _orchestrator.natural_language_search(
+        nl_query=body.query,
+        messages=history,
+        current_filters=body.current_filters,
+    )
     return to_response(result)

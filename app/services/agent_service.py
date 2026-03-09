@@ -1,9 +1,9 @@
 """
-Agent Service — extracción de filtros FileMaker desde lenguaje natural.
+Agent Service — extracción y actualización de filtros FileMaker desde lenguaje natural.
 
-Usa OpenAI GPT-4o-mini para interpretar una consulta libre del usuario
-y mapearla a campos concretos del Layout de FileMaker definidos en
-config/fm_schema.json.
+Soporta conversación multi-turno: cada llamada recibe el historial completo
+de la conversación y los filtros activos, permitiendo al modelo agregar,
+reemplazar o eliminar filtros según el contexto.
 """
 
 import json
@@ -26,20 +26,17 @@ _PROMPT_PATH = Path(__file__).parent.parent.parent / "config" / "agent_prompt.tx
 class ParsedQuery:
     """Resultado del parsing de una consulta en lenguaje natural."""
     filters: dict[str, str] = field(default_factory=dict)
-    # Términos que no mapearon a ningún campo → se buscan en el campo descripción
     description_terms: str = ""
-    # Texto explicativo de lo que entendió el agente (para mostrar al usuario)
     interpretation: str = ""
 
 
 def _load_schema() -> dict:
-    """Carga el schema de campos FM desde disco."""
     with open(_SCHEMA_PATH, encoding="utf-8") as f:
         return json.load(f)
 
 
 def _build_system_prompt(schema: dict) -> str:
-    """Construye el prompt de sistema inyectando los campos FM en el template de agent_prompt.txt."""
+    """Construye el prompt de sistema inyectando los campos FM en el template."""
     fields_text = "\n".join(
         f'- fm_field: "{f["fm_field"]}" | {f["description"]}'
         for f in schema["fields"]
@@ -52,7 +49,7 @@ def _build_system_prompt(schema: dict) -> str:
 class AgentService:
     """
     Servicio de interpretación de lenguaje natural para búsqueda inmobiliaria.
-    Usa GPT-4o-mini para mapear consultas libres a filtros FileMaker.
+    Soporta conversación multi-turno con historial y filtros acumulados.
     """
 
     def __init__(self) -> None:
@@ -62,37 +59,63 @@ class AgentService:
         self._description_field = self._schema.get("description_field", "descripcion")
         self._system_prompt = _build_system_prompt(self._schema)
 
-    def parse(self, nl_query: str) -> ParsedQuery:
+    def parse_with_history(
+        self,
+        nl_query: str,
+        messages: list[dict],
+        current_filters: dict[str, str],
+    ) -> ParsedQuery:
         """
-        Interpreta una consulta en lenguaje natural y devuelve filtros FM estructurados.
+        Interpreta una consulta en el contexto de la conversación anterior.
+
+        El modelo recibe el historial completo de turnos anteriores, los filtros
+        activos actualmente, y el nuevo mensaje del usuario. Devuelve el conjunto
+        COMPLETO de filtros actualizado (puede agregar, reemplazar o eliminar).
 
         Args:
-            nl_query: Consulta libre del usuario (ej: "casa en Barcelona con balcón").
-
-        Returns:
-            ParsedQuery con filters para FM, description_terms e interpretation.
+            nl_query: Nuevo mensaje del usuario.
+            messages: Historial [{"role": "user"|"assistant", "content": "..."}].
+            current_filters: Filtros FM activos actualmente.
         """
-        logger.info("AgentService: parseando consulta '%s'", nl_query)
+        logger.info(
+            "AgentService: turno conversacional — '%s' | filtros activos: %s",
+            nl_query,
+            list(current_filters.keys()),
+        )
+
+        # Base: system prompt con los campos FM
+        api_messages: list[dict] = [{"role": "system", "content": self._system_prompt}]
+
+        # Historial de turnos anteriores (user + assistant)
+        api_messages.extend(messages)
+
+        # Inyectar estado actual de filtros justo antes del nuevo mensaje
+        if current_filters:
+            api_messages.append({
+                "role": "system",
+                "content": (
+                    f"Filtros activos en este momento: {json.dumps(current_filters, ensure_ascii=False)}. "
+                    "Devuelve el conjunto COMPLETO de filtros actualizado según el nuevo mensaje."
+                ),
+            })
+
+        api_messages.append({"role": "user", "content": nl_query})
 
         try:
             response = self._client.chat.completions.create(
                 model="gpt-4o-mini",
                 response_format={"type": "json_object"},
-                temperature=0,  # Determinismo para extracción estructurada
-                messages=[
-                    {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": nl_query},
-                ],
+                temperature=0,
+                messages=api_messages,
             )
-
             raw = response.choices[0].message.content
             data = json.loads(raw)
 
         except Exception as exc:
             logger.error("AgentService: error llamando a OpenAI — %s", exc)
-            # Fallback: buscar todo el texto en el campo descripción
+            # Fallback: conservar filtros actuales y buscar el texto en descripción
             return ParsedQuery(
-                filters={},
+                filters=current_filters,
                 description_terms=nl_query,
                 interpretation=f"Búsqueda de texto libre: {nl_query}",
             )
@@ -104,13 +127,12 @@ class AgentService:
         # Agregar términos no mapeados al campo descripción de FM
         if description_terms_list:
             terms_joined = " ".join(description_terms_list)
-            # Si ya hay un filtro de descripción, combinarlo
             existing = filters.get(self._description_field, "")
             combined = f"{existing} {terms_joined}".strip()
             filters[self._description_field] = f"*{combined}*"
 
         logger.info(
-            "AgentService: %d filtro(s) extraídos — %s",
+            "AgentService: %d filtro(s) — %s",
             len(filters),
             list(filters.keys()),
         )

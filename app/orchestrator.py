@@ -138,17 +138,29 @@ class RealEstateOrchestrator:
 
     # ─── API pública ─────────────────────────────────────────────────────────
 
-    async def natural_language_search(self, nl_query: str) -> MultiSearchResult:
+    async def natural_language_search(
+        self,
+        nl_query: str,
+        messages: list[dict] | None = None,
+        current_filters: dict[str, str] | None = None,
+    ) -> MultiSearchResult:
         """
         Busca inmuebles interpretando una consulta en lenguaje natural.
+        Soporta conversación multi-turno: recibe historial y filtros activos.
 
         Args:
-            nl_query: Consulta libre (ej: "casa en Barcelona con balcón luminoso").
+            nl_query: Nuevo mensaje del usuario.
+            messages: Historial de turnos anteriores [{"role": ..., "content": ...}].
+            current_filters: Filtros FM activos en la sesión actual.
         """
         logger.info("Orquestador: búsqueda NL '%s'", nl_query)
 
         try:
-            parsed = self._agent.parse(nl_query)
+            parsed = self._agent.parse_with_history(
+                nl_query=nl_query,
+                messages=messages or [],
+                current_filters=current_filters or {},
+            )
         except Exception as exc:
             logger.error("Orquestador: error en AgentService — %s", exc)
             return MultiSearchResult(
